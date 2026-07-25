@@ -268,6 +268,13 @@ export class Api extends Construct {
     props.statsTable.grantReadWriteData(apiHandler);
     fileBucket.grantReadWrite(apiHandler);
 
+    // Grant read access to additional S3 buckets (e.g. AgentCore FileBucket)
+    if (props.additionalS3Buckets) {
+      props.additionalS3Buckets.forEach((bucket) => {
+        bucket.grantRead(apiHandler);
+      });
+    }
+
     // Grant DynamoDB access for Use Case Builder table
     if (props.useCaseBuilderTable) {
       props.useCaseBuilderTable.grantReadWriteData(apiHandler);
