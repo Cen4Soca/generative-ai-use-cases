@@ -27,6 +27,22 @@ COPY app.py ./
 COPY src/ ./src/
 COPY mcp-configs ./mcp-configs
 
+# --- SDPM: spec-driven-presentation-maker ---
+COPY sdpm-skill/ ./sdpm-skill/
+COPY sdpm-mcp-local/ ./sdpm-mcp-local/
+COPY sdpm-shared/ ./sdpm-shared/
+RUN uv pip install --python /tmp/.venv/bin/python ./sdpm-skill
+RUN /tmp/.venv/bin/python sdpm-skill/scripts/download_aws_icons.py \
+ && /tmp/.venv/bin/python sdpm-skill/scripts/download_material_icons.py
+RUN ln -s /var/task/sdpm-skill /var/task/skill
+RUN ln -s /var/task/sdpm-shared /var/task/shared
+
+# LibreOffice (Impress) + poppler + 日本語フォント: sdpm の measure_slides / preview 用
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libreoffice-impress \
+      poppler-utils \
+      fonts-noto-cjk \
+ && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Expose port 8080 as required by AgentCore
 EXPOSE 8080

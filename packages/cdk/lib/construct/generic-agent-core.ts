@@ -168,6 +168,7 @@ export class GenericAgentCore extends Construct {
           FILE_BUCKET: bucketName,
           MCP_CONFIG_PATH: '/var/task/mcp-configs/agent-builder/mcp.json',
           SUPPORTED_CACHE_FIELDS: JSON.stringify(SUPPORTED_CACHE_FIELDS),
+          MAX_ITERATIONS: '100',
         },
       },
     };
