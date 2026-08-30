@@ -51,6 +51,22 @@ export default defineConfig(({ mode }) => ({
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         swDest: 'dist/sw.js',
         maximumFileSizeToCacheInBytes: 5000000,
+        // LOCAL PATCH (not upstream) - re-apply after upgrading GenU.
+        //
+        // generateSW registers its navigation fallback for the whole origin
+        // (sw.js is served from '/' with scope '/'), so every navigation on
+        // this CloudFront distribution is answered with GenU's precached
+        // index.html. When another SPA is co-hosted under a path prefix on
+        // the same distribution, that hijacks its navigations: the co-hosted
+        // app's URL loads GenU, whose router then renders its error page.
+        //
+        // Excluding those prefixes lets their navigations reach CloudFront
+        // normally. Keep in sync with the co-hosted app's CloudFront basePath.
+        navigateFallbackDenylist: [
+          /^\/transcription-improvement-dev(\/|$)/,
+          /^\/transcription-improvement-staging(\/|$)/,
+          /^\/transcription-improvement-prod(\/|$)/,
+        ],
       },
       manifest: {
         name: 'Generative AI Use Cases',
