@@ -28,16 +28,24 @@ COPY src/ ./src/
 COPY mcp-configs ./mcp-configs
 
 # --- SDPM: spec-driven-presentation-maker ---
+# Layout follows SDPM v0.5.0+ (skill/ -> sdpm/, mcp-local/ -> servers/local/).
+# The engine resolves bundled data from SDPM_SKILL_ROOT, and personas/ must sit
+# next to it (SKILL_ROOT.parent/personas), hence the /var/task/personas target.
 COPY sdpm-skill/ ./sdpm-skill/
-COPY sdpm-mcp-local/ ./sdpm-mcp-local/
-COPY sdpm-shared/ ./sdpm-shared/
+COPY sdpm-servers-local/ ./sdpm-servers-local/
+COPY sdpm-personas/ ./personas/
+COPY sdpm-shared/ ./shared/
 RUN uv pip install --python /tmp/.venv/bin/python ./sdpm-skill
+# Document conversion deps required by read_attachment / import_attachment
+# (declared in servers/local, not in the sdpm engine package)
+RUN uv pip install --python /tmp/.venv/bin/python \
+      "pdfplumber>=0.11.0" "pypdf>=6.15.0" "python-docx>=1.0.0" "openpyxl>=3.1.0"
 RUN /tmp/.venv/bin/python sdpm-skill/scripts/download_aws_icons.py \
  && /tmp/.venv/bin/python sdpm-skill/scripts/download_material_icons.py
-RUN ln -s /var/task/sdpm-skill /var/task/skill
-RUN ln -s /var/task/sdpm-shared /var/task/shared
+RUN ln -s /var/task/sdpm-skill /var/task/sdpm
 
-# LibreOffice (Impress) + poppler + 日本語フォント: sdpm の measure_slides / preview 用
+# LibreOffice (Impress) + poppler + 日本語フォント: sdpm の run_python
+# (preview 生成 / テキスト計測) 用
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libreoffice-impress \
       poppler-utils \

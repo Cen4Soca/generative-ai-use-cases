@@ -85,6 +85,19 @@
         "category": "Search",
         "description": "Web search and research capabilities powered by Tavily"
       }
+    },
+    "spec-driven-presentation-maker": {
+      "command": "python",
+      "args": ["sdpm-servers-local/server.py"],
+      "env": {
+        "PYTHONPATH": "/var/task/sdpm-skill:/var/task",
+        "SDPM_SKILL_ROOT": "/var/task/sdpm-skill",
+        "SDPM_OUTPUT_DIR": "/tmp/ws"
+      },
+      "metadata": {
+        "category": "AI/ML",
+        "description": "Creating presentations using a spec-driven approach"
+      }
     }
   }
 }
