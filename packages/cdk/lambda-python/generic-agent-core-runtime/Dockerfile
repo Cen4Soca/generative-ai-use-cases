@@ -33,7 +33,6 @@ COPY mcp-configs ./mcp-configs
 # next to it (SKILL_ROOT.parent/personas), hence the /var/task/personas target.
 COPY sdpm-skill/ ./sdpm-skill/
 COPY sdpm-servers-local/ ./sdpm-servers-local/
-COPY sdpm-personas/ ./personas/
 COPY sdpm-shared/ ./shared/
 RUN uv pip install --python /tmp/.venv/bin/python ./sdpm-skill
 # Document conversion deps required by read_attachment / import_attachment
