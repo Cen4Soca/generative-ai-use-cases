@@ -935,6 +935,8 @@ const envs: Record<string, Partial<StackInput>> = {
 "anthropic.claude-3-haiku-20240307-v1:0",
 "global.anthropic.claude-opus-5-5",
 "global.anthropic.claude-opus-5",
+"global.anthropic.claude-haiku-5-5",
+"global.anthropic.claude-sonnet-5-5",
 "global.anthropic.claude-sonnet-4-20250514-v1:0",
 "us.anthropic.claude-opus-4-1-20250805-v1:0",
 "us.anthropic.claude-opus-4-20250514-v1:0",
@@ -1103,6 +1105,8 @@ const envs: Record<string, Partial<StackInput>> = {
 "anthropic.claude-3-haiku-20240307-v1:0",
 "global.anthropic.claude-opus-5-5",
 "global.anthropic.claude-opus-5",
+"global.anthropic.claude-haiku-5-5",
+"global.anthropic.claude-sonnet-5-5",
 "global.anthropic.claude-sonnet-4-20250514-v1:0",
 "us.anthropic.claude-opus-4-1-20250805-v1:0",
 "us.anthropic.claude-opus-4-20250514-v1:0",
@@ -1178,6 +1182,8 @@ const envs: Record<string, Partial<StackInput>> = {
 이 솔루션은 다음 음성-음성 모델을 지원합니다:
 
 ```
+amazon.nova-2-5-sonic
+amazon.nova-2-sonic-v1:0
 amazon.nova-sonic-v1:0
 ```
 

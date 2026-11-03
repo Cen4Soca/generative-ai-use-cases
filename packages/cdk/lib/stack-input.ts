@@ -45,7 +45,9 @@ const baseStackInputSchema = z.object({
     .default([
       'global.anthropic.claude-opus-5-5',
       'global.anthropic.claude-opus-5',
+      'global.anthropic.claude-sonnet-5-5',
       'global.anthropic.claude-sonnet-5',
+      'global.anthropic.claude-haiku-5-5',
       'global.anthropic.claude-sonnet-4-6',
       'global.anthropic.claude-opus-4-8',
       'global.anthropic.claude-opus-4-7',
@@ -86,7 +88,7 @@ const baseStackInputSchema = z.object({
         }),
       ])
     )
-    .default(['amazon.nova-2-sonic-v1:0']),
+    .default(['amazon.nova-2-5-sonic']),
   endpointNames: z
     .array(
       z.union([
@@ -213,6 +215,7 @@ const baseStackInputSchema = z.object({
   closedNetworkVpcIpv4Cidr: z.string().default('10.0.0.0/16'),
   closedNetworkVpcId: z.string().nullish(),
   closedNetworkSubnetIds: z.array(z.string()).nullish(),
+  closedNetworkApiGatewayVpcEndpointIds: z.array(z.string()).nullish(),
   closedNetworkCertificateArn: z.string().nullish(),
   closedNetworkDomainName: z.string().nullish(),
   closedNetworkCreateTestEnvironment: z.boolean().default(true),
