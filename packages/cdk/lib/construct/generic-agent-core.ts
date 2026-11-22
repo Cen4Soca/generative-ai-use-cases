@@ -20,7 +20,10 @@ import {
 } from '@aws-cdk/aws-bedrock-agentcore-alpha';
 import { BucketInfo } from 'generative-ai-use-cases';
 import * as path from 'path';
-import { SUPPORTED_CACHE_FIELDS } from '@generative-ai-use-cases/common';
+import {
+  SUPPORTED_CACHE_FIELDS,
+  modelMetadata,
+} from '@generative-ai-use-cases/common';
 
 export interface AgentCoreRuntimeConfig {
   name: string;
@@ -40,7 +43,20 @@ export interface GenericAgentCoreProps {
   isAgentCoreNetworkPrivate?: boolean;
   agentCoreVpcId?: string | null;
   agentCoreSubnetIds?: string[] | null;
+  // Pre-resolved VPC / subnets (e.g. injected from ClosedNetworkStack via cross-stack reference).
+  // When provided, these are used directly instead of Vpc.fromLookup(agentCoreVpcId).
+  vpc?: IVpc;
+  subnets?: ISubnet[];
   gatewayArns?: string[];
+  // Closed network mode: the generic runtime starts no default MCP servers,
+  // since they are downloaded from npm/PyPI or call internet endpoints
+  closedNetworkMode?: boolean;
+  // The text generation models of this deployment, for their output token limits
+  modelIds?: string[];
+  // Let the agent builder runtime use AgentCore Web Search (InvokeWebSearch)
+  webSearchEnabled?: boolean;
+  // Domains excluded from every web search, enforced by the runtime's tool
+  webSearchExcludeDomains?: string[];
 }
 
 interface RuntimeResources {
@@ -55,6 +71,7 @@ export class GenericAgentCore extends Construct {
   private readonly agentBuilderRuntimeConfig: AgentCoreRuntimeConfig;
   private readonly resources: RuntimeResources;
   private readonly gatewayArns?: string[];
+  private readonly webSearchEnabled: boolean;
 
   // Security Group ID that requires manual cleanup after AgentCore Runtime deletion
   // Used for CloudFormation Output to remind users of manual cleanup tasks
@@ -70,16 +87,29 @@ export class GenericAgentCore extends Construct {
       isAgentCoreNetworkPrivate = false,
       agentCoreVpcId = null,
       agentCoreSubnetIds = null,
+      vpc: providedVpc,
+      subnets: providedSubnets,
       gatewayArns,
+      closedNetworkMode = false,
+      webSearchEnabled = false,
+      webSearchExcludeDomains,
     } = props;
 
     this.gatewayArns = gatewayArns;
+    this.webSearchEnabled = webSearchEnabled;
 
     // Create bucket first
     this._fileBucket = this.createFileBucket();
 
     // Load configurations
-    const configs = this.loadConfigurations(env, this._fileBucket.bucketName);
+    const configs = this.loadConfigurations(
+      env,
+      this._fileBucket.bucketName,
+      props.modelIds ?? [],
+      closedNetworkMode,
+      webSearchEnabled,
+      webSearchExcludeDomains
+    );
     this.genericRuntimeConfig = configs.generic;
     this.agentBuilderRuntimeConfig = configs.agentBuilder;
 
@@ -88,11 +118,20 @@ export class GenericAgentCore extends Construct {
     let vpc: IVpc | undefined;
     let subnets: ISubnet[] | undefined;
 
-    if (isAgentCoreNetworkPrivate && agentCoreVpcId && agentCoreSubnetIds) {
-      vpc = Vpc.fromLookup(this, 'AgentCoreVpc', { vpcId: agentCoreVpcId });
-      subnets = agentCoreSubnetIds.map((subnetId, index) =>
-        Subnet.fromSubnetId(this, `AgentCoreSubnet${index}`, subnetId)
-      );
+    // Resolve VPC + subnets: prefer pre-resolved refs (e.g. from ClosedNetworkStack), then fall back to lookup-by-id
+    if (isAgentCoreNetworkPrivate) {
+      if (providedVpc && providedSubnets && providedSubnets.length > 0) {
+        vpc = providedVpc;
+        subnets = providedSubnets;
+      } else if (agentCoreVpcId && agentCoreSubnetIds) {
+        vpc = Vpc.fromLookup(this, 'AgentCoreVpc', { vpcId: agentCoreVpcId });
+        subnets = agentCoreSubnetIds.map((subnetId, index) =>
+          Subnet.fromSubnetId(this, `AgentCoreSubnet${index}`, subnetId)
+        );
+      }
+    }
+
+    if (vpc && subnets) {
       securityGroup = new SecurityGroup(this, 'AgentCoreSecurityGroup', {
         vpc,
         description: 'Security group for AgentCore Runtime',
@@ -141,7 +180,44 @@ export class GenericAgentCore extends Construct {
     });
   }
 
-  private loadConfigurations(env: string, bucketName: string) {
+  /**
+   * The output token limit of each text generation model, as the Converse path
+   * uses it. Without one the runtime leaves maxTokens unset and Bedrock applies
+   * its default of 4,096, so a long answer, or a tool call carrying a large
+   * argument, is cut off with MaxTokensReachedException. Only the models of this
+   * deployment are passed: an environment variable holds at most 2,048 characters.
+   */
+  private modelMaxTokensEnvironment(
+    modelIds: string[]
+  ): Record<string, string> {
+    const limits = Object.fromEntries(
+      modelIds.flatMap((modelId) => {
+        const maxTokens =
+          modelMetadata[modelId]?.defaultParams?.inferenceConfig?.maxTokens;
+        return maxTokens ? [[modelId, maxTokens]] : [];
+      })
+    );
+    if (Object.keys(limits).length === 0) {
+      return {};
+    }
+    const value = JSON.stringify(limits);
+    if (value.length > 2048) {
+      throw new Error(
+        `MODEL_MAX_TOKENS is ${value.length} characters, over the 2,048 an AgentCore Runtime environment variable allows. Reduce modelIds.`
+      );
+    }
+    return { MODEL_MAX_TOKENS: value };
+  }
+
+  private loadConfigurations(
+    env: string,
+    bucketName: string,
+    modelIds: string[],
+    closedNetworkMode: boolean,
+    webSearchEnabled: boolean,
+    webSearchExcludeDomains?: string[]
+  ) {
+    const modelMaxTokens = this.modelMaxTokensEnvironment(modelIds);
     return {
       generic: {
         name: `GenUGenericRuntime${env}`,
@@ -152,8 +228,11 @@ export class GenericAgentCore extends Construct {
         serverProtocol: 'HTTP',
         environmentVariables: {
           FILE_BUCKET: bucketName,
-          MCP_CONFIG_PATH: '/var/task/mcp-configs/generic/mcp.json',
+          MCP_CONFIG_PATH: closedNetworkMode
+            ? '/var/task/mcp-configs/closed-network/mcp.json'
+            : '/var/task/mcp-configs/generic/mcp.json',
           SUPPORTED_CACHE_FIELDS: JSON.stringify(SUPPORTED_CACHE_FIELDS),
+          ...modelMaxTokens,
         },
       },
       agentBuilder: {
@@ -168,6 +247,16 @@ export class GenericAgentCore extends Construct {
           FILE_BUCKET: bucketName,
           MCP_CONFIG_PATH: '/var/task/mcp-configs/agent-builder/mcp.json',
           SUPPORTED_CACHE_FIELDS: JSON.stringify(SUPPORTED_CACHE_FIELDS),
+          ...modelMaxTokens,
+          ...(webSearchEnabled && {
+            WEB_SEARCH_ENABLED: 'true',
+            ...(webSearchExcludeDomains &&
+              webSearchExcludeDomains.length > 0 && {
+                WEB_SEARCH_EXCLUDE_DOMAINS: JSON.stringify(
+                  webSearchExcludeDomains
+                ),
+              }),
+          }),
           MAX_ITERATIONS: '100',
         },
       },
@@ -345,6 +434,21 @@ export class GenericAgentCore extends Construct {
         resources: gatewayArns && gatewayArns.length > 0 ? gatewayArns : ['*'],
       })
     );
+
+    // AgentCore Web Search for the agent builder
+    if (this.webSearchEnabled) {
+      const stack = Stack.of(this);
+      role.addToPolicy(
+        new PolicyStatement({
+          sid: 'AllowWebSearch',
+          effect: Effect.ALLOW,
+          actions: ['bedrock-agentcore:InvokeWebSearch'],
+          resources: [
+            `arn:${stack.partition}:bedrock-agentcore:${stack.region}:aws:tool/web-search.v1`,
+          ],
+        })
+      );
+    }
 
     this._fileBucket.grantWrite(role);
   }

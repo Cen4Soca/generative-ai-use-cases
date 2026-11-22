@@ -29,6 +29,7 @@ import {
   getItemsFromPlaceholders,
   getTextFormItemsFromItems,
   getTextFormUniqueLabels,
+  splitSelectOptions,
 } from '../../utils/UseCaseBuilderUtils';
 import useRagKnowledgeBaseApi from '../../hooks/useRagKnowledgeBaseApi';
 import useRagApi from '../../hooks/useRagApi';
@@ -39,6 +40,8 @@ import FileCard from '../FileCard';
 import { AcceptedDotExtensions } from '../../utils/MediaUtils';
 import { PiPaperclip, PiSpinnerGap } from 'react-icons/pi';
 import { useTranslation } from 'react-i18next';
+import useDropOverlay from '../../hooks/useDropOverlay';
+import useAcceptedExtensions from '../../hooks/useAcceptedExtensions';
 
 const ragEnabled: boolean = import.meta.env.VITE_APP_RAG_ENABLED === 'true';
 const ragKnowledgeBaseEnabled: boolean =
@@ -48,11 +51,13 @@ const ragKnowledgeBaseEnabled: boolean =
 // - Lambda synchronous payload limit: 6MB
 // - File data is base64-encoded in the request, so max original file size ≈ 6MB / 1.33 ≈ 4.5MB
 // - Match pages/ChatPage.tsx. If a difference occurs, update it
-const fileLimit: FileLimit = {
+const DEFAULT_MAX_IMAGE_COUNT = 20;
+
+const baseFileLimit: FileLimit = {
   accept: AcceptedDotExtensions,
   maxFileCount: 5,
   maxFileSizeMB: 4.5,
-  maxImageFileCount: 20,
+  maxImageFileCount: DEFAULT_MAX_IMAGE_COUNT,
   maxImageFileSizeMB: 3.75,
   maxVideoFileCount: 1,
   maxVideoFileSizeMB: 25, // 25 MB for base64 input (TODO: up to 1 GB through S3)
@@ -160,7 +165,6 @@ const UseCaseBuilderView: React.FC<Props> = (props) => {
     clear: clearFiles,
   } = useFiles(pathname);
   const stopReason = getStopReason();
-  const [isOver, setIsOver] = useState(false);
 
   const [errorMessages, setErrorMessages] = useState<string[]>([]);
 
@@ -196,7 +200,7 @@ const UseCaseBuilderView: React.FC<Props> = (props) => {
         item.options.length > 0 &&
         values[item.label] === ''
       ) {
-        setValue(item.label, item.options.split(',')[0]);
+        setValue(item.label, splitSelectOptions(item.options)[0]);
       }
     }
   }, [selectItems, values, setValue]);
@@ -276,7 +280,7 @@ const UseCaseBuilderView: React.FC<Props> = (props) => {
       if (!item.options || item.options.length === 0) {
         tmpErrorMessages.push(t('useCaseBuilder.error.missing_select_options'));
       } else {
-        const options = item.options.split(',');
+        const options = splitSelectOptions(item.options);
         const emptyOptions = options.filter((o) => o === '');
 
         if (emptyOptions.length > 0) {
@@ -420,19 +424,19 @@ const UseCaseBuilderView: React.FC<Props> = (props) => {
     [setValue]
   );
 
-  const accept = useMemo(() => {
-    if (!modelId) return [];
-    const feature = MODELS.getModelMetadata(modelId);
-    return [
-      ...(feature.flags.doc ? fileLimit.accept.doc : []),
-      ...(feature.flags.image ? fileLimit.accept.image : []),
-      ...(feature.flags.video ? fileLimit.accept.video : []),
-    ];
+  const fileLimit = useMemo<FileLimit>(() => {
+    const maxImages =
+      MODELS.getModelMetadata(modelId).flags.maxImageCount ??
+      DEFAULT_MAX_IMAGE_COUNT;
+    if (maxImages === baseFileLimit.maxImageFileCount) return baseFileLimit;
+    return { ...baseFileLimit, maxImageFileCount: maxImages };
   }, [modelId]);
+
+  const accept = useAcceptedExtensions(fileLimit, modelId);
 
   useEffect(() => {
     checkFiles(fileLimit, accept);
-  }, [checkFiles, accept]);
+  }, [checkFiles, fileLimit, accept]);
 
   const fileInput = useRef<HTMLInputElement | null>(null);
 
@@ -453,35 +457,16 @@ const UseCaseBuilderView: React.FC<Props> = (props) => {
         deleteUploadedFile(fileId, fileLimit, accept);
       }
     },
-    [deleteUploadedFile, accept]
+    [deleteUploadedFile, fileLimit, accept]
   );
 
-  const handleDragOver = (event: React.DragEvent) => {
-    // When a file is dragged, display the overlay
-    event.preventDefault();
-    event.stopPropagation();
-    setIsOver(true);
-  };
-
-  const handleDragLeave = (event: React.DragEvent) => {
-    // When a file is dragged, hide the overlay
-    event.stopPropagation();
-    event.preventDefault();
-
-    if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-      setIsOver(false);
-    }
-  };
-
-  const handleDrop = (event: React.DragEvent) => {
-    // When a file is dropped, add the file
-    event.preventDefault();
-    setIsOver(false);
-    if (event.dataTransfer.files) {
-      // Upload the file
-      uploadFiles(Array.from(event.dataTransfer.files), fileLimit, accept);
-    }
-  };
+  // Drop overlay; see useDropOverlay for why it closes on its own.
+  const onDropFiles = useCallback(
+    (files: File[]) => uploadFiles(files, fileLimit, accept),
+    [uploadFiles, fileLimit, accept]
+  );
+  const { isOver, hideOverlay, handleDragOver, handleDragLeave, handleDrop } =
+    useDropOverlay(onDropFiles);
 
   const handlePaste = async (pasteEvent: React.ClipboardEvent) => {
     const fileList = pasteEvent.clipboardData.items || [];
@@ -499,13 +484,29 @@ const UseCaseBuilderView: React.FC<Props> = (props) => {
 
   return (
     <div
-      onDragOver={props.fileUpload ? handleDragOver : undefined}
-      onDragLeave={props.fileUpload ? handleDragLeave : undefined}
+      onDragOver={
+        props.fileUpload
+          ? (event) => {
+              // Keep a surrounding page from also showing its overlay
+              event.stopPropagation();
+              handleDragOver(event);
+            }
+          : undefined
+      }
+      onDragLeave={
+        props.fileUpload
+          ? (event) => {
+              event.stopPropagation();
+              handleDragLeave(event);
+            }
+          : undefined
+      }
       onPaste={props.fileUpload ? handlePaste : undefined}
       className="relative">
       {isOver && props.fileUpload && (
         <div
           onDrop={handleDrop}
+          onClick={hideOverlay}
           className="absolute inset-0 z-[999] bg-slate-300 p-10 text-center">
           <div className="flex h-full w-full items-center justify-center outline-dashed">
             <div className="font-bold">{t('chat.drop_files')}</div>
@@ -605,11 +606,9 @@ const UseCaseBuilderView: React.FC<Props> = (props) => {
                   <Select
                     label={item.label !== NOLABEL ? item.label : undefined}
                     value={values[item.label] ?? ''}
-                    options={
-                      item.options?.split(',')?.map((v: string) => {
-                        return { value: v, label: v };
-                      }) ?? []
-                    }
+                    options={splitSelectOptions(item.options).map((v) => {
+                      return { value: v, label: v };
+                    })}
                     onChange={(value) => {
                       setValue(item.label, value);
                     }}
@@ -740,7 +739,9 @@ const UseCaseBuilderView: React.FC<Props> = (props) => {
       </div>
 
       <div className="mt-5 rounded border border-black/30 p-1.5">
-        <Markdown>{typingTextOutput}</Markdown>
+        <Markdown generating={loading || typingTextOutput !== text}>
+          {typingTextOutput}
+        </Markdown>
         {!loading && text === '' && (
           <div className="text-gray-500">
             {t('useCaseBuilder.resultPlaceholder')}

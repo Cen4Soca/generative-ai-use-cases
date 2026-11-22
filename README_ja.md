@@ -13,6 +13,10 @@
 > [!IMPORTANT]
 > GenU は v4 より多言語対応しました。
 
+## 最近のアップデート
+
+各リリースの変更内容、次のリリースの予定、アップデート前の確認事項は [リリースノート](docs/ja/RELEASE_NOTES.md) をご参照ください。
+
 ## GenU 活用パターン集
 
 GenU の機能やオプションを活用パターンごとに紹介いたします。網羅的なデプロイオプションに関しては [こちら](docs/ja/DEPLOY_OPTION.md) をご参照ください。
@@ -97,6 +101,10 @@ RAG は根拠に基づいた回答のみを許すため、LLM にありがちな
 GenU は RAG チャットというユースケースを提供しています。
 また RAG チャットの情報ソースとして [Amazon Kendra](docs/ja/DEPLOY_OPTION.md) と [Knowledge Base](docs/ja/DEPLOY_OPTION.md#rag-チャット-knowledge-base-ユースケースの有効化) の 2 種類が利用可能です。
 Amazon Kendra を利用する場合は、[手動で作成した S3 Bucket や Kendra Index をそのまま利用する](docs/ja/DEPLOY_OPTION.md#既存の-amazon-kendra-index-を利用したい場合)ことが可能です。
+
+> [!IMPORTANT]
+> Amazon Kendra は 2026 年 6 月 30 日にメンテナンスモードへ移行し、2026 年 7 月 30 日以降は新規のお客様の受付を終了しています ([Amazon Kendra availability change](https://docs.aws.amazon.com/kendra/latest/dg/kendra-availability-change.html))。これから RAG チャットを構築する場合は、Knowledge Base 版の利用を推奨します。固定費を抑えたい場合は `ragKnowledgeBaseStorageType` に `s3vectors` を指定してください。
+
 Knowledge Base を利用する場合は、[Advanced Parsing](docs/ja/DEPLOY_OPTION.md#advanced-parsing-を有効化)・[チャンク戦略の選択](docs/ja/DEPLOY_OPTION.md#チャンク戦略を変更)・[クエリ分解](docs/ja/DEPLOY_OPTION.md#rag-チャット-knowledge-base-ユースケースの有効化)・[リランキング](docs/ja/DEPLOY_OPTION.md#rag-チャット-knowledge-base-ユースケースの有効化) など高度な RAG が利用可能です。
 また Knowledge Base では、[メタデータフィルターの設定](docs/ja/DEPLOY_OPTION.md#メタデータフィルターの設定) も可能です。
 例えば「組織ごとにアクセス可能なデータソースを切り替えたい」や「UI からユーザーがフィルタを設定したい」といった要件を満たすことが可能です。
@@ -159,7 +167,15 @@ GenU のデプロイには [AWS Cloud Development Kit](https://aws.amazon.com/jp
 - [AWS CloudShell を利用したデプロイ方法 (手元の環境を用意することが難しい場合)](docs/ja/DEPLOY_ON_CLOUDSHELL.md)
 - Workshop ([日本語](https://catalog.workshops.aws/generative-ai-use-cases-jp) / [英語](https://catalog.workshops.aws/generative-ai-use-cases))
 
-まず、以下のコマンドを実行してください。全てのコマンドはリポジトリのルートで実行してください。
+まず、リポジトリを clone し、最新のリリースからブランチを作成します。main ブランチにはまだリリースされていない変更も含まれるため、[リリース](https://github.com/aws-samples/generative-ai-use-cases/releases) をデプロイすることをお勧めします。アップデートの方法は [アップデート方法](docs/ja/UPDATE.md) をご参照ください。
+
+```bash
+git clone https://github.com/aws-samples/generative-ai-use-cases
+cd generative-ai-use-cases
+git switch -c genu $(git describe --tags --abbrev=0)
+```
+
+次に、以下のコマンドを実行してください。全てのコマンドはリポジトリのルートで実行してください。
 
 ```bash
 npm ci
@@ -189,6 +205,7 @@ npm run cdk:deploy:quick
 
 - [デプロイオプション](docs/ja/DEPLOY_OPTION.md)
 - [アップデート方法](docs/ja/UPDATE.md)
+- [リリースノート](docs/ja/RELEASE_NOTES.md)
 - [ローカル開発環境構築手順](docs/ja/DEVELOPMENT.md)
 - [リソースの削除方法](docs/ja/DESTROY.md)
 - [ネイティブアプリのように利用する方法](docs/ja/PWA.md)
