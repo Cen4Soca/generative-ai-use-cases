@@ -48,16 +48,19 @@ import { AcceptedDotExtensions } from '../utils/MediaUtils';
 import { useTranslation } from 'react-i18next';
 import useAcceptedExtensions from '../hooks/useAcceptedExtensions';
 
-// File size limits for Chat (Lambda route: API Gateway → Lambda → Bedrock Converse API)
-// - Lambda synchronous payload limit: 6MB
-// - File data is base64-encoded in the request, so max original file size ≈ 6MB / 1.33 ≈ 4.5MB
-// - Bedrock Converse API document limit: 4.5MB per document (except Claude 4+ PDF and Nova PDF/DOCX)
+// File size limits for Chat (Lambda route: browser → Lambda → Bedrock Converse API)
+// - The browser sends the S3 URL of each image and document, and the Lambda
+//   function reads them, so files are not bound by its 6MB payload limit
+// - Bedrock Converse API document limit: 4.5MB per document, except PDFs
+// - Bedrock rejects a request whose attachments add up to about 23MB, past
+//   turns included; the Lambda function stops it first (utils/attachments.ts)
 const DEFAULT_MAX_IMAGE_COUNT = 20;
 
 const baseFileLimit: FileLimit = {
   accept: AcceptedDotExtensions,
   maxFileCount: 5,
   maxFileSizeMB: 4.5,
+  maxPdfFileSizeMB: 20,
   maxImageFileCount: DEFAULT_MAX_IMAGE_COUNT,
   maxImageFileSizeMB: 3.75,
   maxVideoFileCount: 1,
@@ -161,6 +164,8 @@ const ChatPage: React.FC = () => {
     updateSystemContextByModel,
     getCurrentSystemContext,
     retryGeneration,
+    continueGeneration,
+    getStopReason,
     forceToStop,
   } = useChat(pathname, chatId);
   const { createShareId, findShareId, deleteShareId } = useChatApi();
@@ -420,6 +425,22 @@ const ChatPage: React.FC = () => {
       overrideModelParameters
     );
   }, [retryGeneration, base64Cache, overrideModelParameters]);
+
+  // Ask for the rest of a response that stopped at the output token limit
+  const onContinue = useCallback(() => {
+    continueGeneration(
+      undefined,
+      withCurrentDate,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      base64Cache,
+      overrideModelParameters
+    );
+  }, [continueGeneration, base64Cache, overrideModelParameters]);
 
   const onReset = useCallback(() => {
     clear();
@@ -785,6 +806,11 @@ const ChatPage: React.FC = () => {
                 />
               </>
             </ExpandableField>
+          )}
+          {!loading && getStopReason() === 'max_tokens' && (
+            <div className="mb-2 flex justify-center">
+              <Button onClick={onContinue}>{t('chat.continue_output')}</Button>
+            </div>
           )}
           <InputChatContent
             content={content}
